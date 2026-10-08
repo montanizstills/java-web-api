@@ -1,0 +1,140 @@
+<form>
+    <label for=api-key>API_KEY:</label>
+    <input id=api-key>
+    <button type=submit>Submit</button>
+
+    <!--    TODO - value="completion-request" will allow you to use Utils.toPascalCase() in controller-->
+    <input type="radio" name="openaiRequestRadio" value="CompletionRequest"
+           onchange="displayOpenAIModelTunerOnScreen()"> Completion Request
+
+    <input type="radio" name="openaiRequestRadio" value="ImageRequest"
+           onchange="displayOpenAIModelTunerOnScreen()"> Image Request
+</form>
+<div id="tunerRequestData"></div>
+
+<script>
+    let requestParameters = []
+
+    function getAllRadioButtons() {
+        return document.getElementsByName("openaiRequestRadio")
+    }
+
+    function getSelectedRadioButton() {
+        let selectedRadioButton
+
+        for (const radio of getAllRadioButtons()) {
+            if (radio.checked) {
+                selectedRadioButton = radio.value
+            }
+        }
+        return selectedRadioButton
+    }
+
+    function getTunerRequestDataElement() {
+        return document.getElementById("tunerRequestData")
+    }
+
+    function resetTunerRequestView() {
+        getTunerRequestDataElement().innerHTML = ''
+        requestParameters = []
+    }
+
+    function getRequestTunerFields(requestType) {
+        // let http = async (requestType) => await fetch("",{method:"GET"}).then().catch() //TODO - use this method instead. This returns a Promise.
+        // http.apply("CompletionRequest")
+        let requestFieldEndpoint = `http://localhost:8080/public-api-controller/request-fields/${requestType}`
+        fetch(requestFieldEndpoint, {method: "GET"})
+            // finish Promise<Response>, i.e. wait for server response
+            .then(response => response.text())
+            // clean each element of the 'string'/array from the server response
+            .then(items => {
+                items
+                    .split(',')
+                    .map(item => {
+                        //replace '[]' everywhere
+                        let cleanedItem = item.trim().replace(/^\[|\]$/g, '');
+                        // (cleanedItem.toLowerCase() != 'openaiclient' || cleanedItem.toLowerCase() != 'prompt' || cleanedItem.toLowerCase() != 'user') ? requestParameters.push(cleanedItem) : null
+                        requestParameters.push(cleanedItem)
+                    })
+            })
+            //draw to DOM
+            .then(() => {
+                requestParameters
+                    .forEach(item => {
+                        getTunerRequestDataElement().innerHTML += `<label for="${item}">${item}:</label><input id="${item}_input_field"><br/>`
+                    })
+            })
+            .catch(error => alert(error))
+    }
+
+    function displayOpenAIModelTunerOnScreen() {
+
+        switch (getSelectedRadioButton()) {
+            case "CompletionRequest":
+                resetTunerRequestView()
+                getRequestTunerFields(getSelectedRadioButton())
+                break
+
+            case "ImageRequest":
+                resetTunerRequestView()
+                getRequestTunerFields(getSelectedRadioButton())
+                break
+        }
+    }
+
+    function addRequestInputFieldsToMap(jsonMap) {
+        let mapString = Array
+            // get all input Elements with id that end with '_input_field'
+            .from(document.querySelectorAll("input[id$='_input_field']"))
+            // create a (key,value) pair of each Element's id and value and add to accumulator
+            .reduce((accumulator, field) => {
+                accumulator += `${field.id.toString()}:${field.value.toString()}`
+                accumulator += ","
+                return accumulator
+            }, "")
+        // remove trailing comma from string
+        mapString = mapString.toString().replace(/,$/g)
+        // split map on comma to isolate  "someKey":"someVal", "someKey2":"someVal2",...etc
+        let keyValuePairs = mapString.split(",")
+        // for each item split `key` from `value` and add to dict
+        keyValuePairs.forEach(pair => {
+            const [key, value] = pair.split(":")
+            jsonMap[key] = value
+        })
+    }
+
+    function postMessage(text) {
+        let currentURL = window.location.href
+        fetch(currentURL, {
+                method: "POST",
+                body: JSON.stringify(text),
+                headers: {"Content-Type": "application/text"}
+            }
+        )
+    }
+
+    const form = document.querySelector('form')
+    form.addEventListener('submit', handleSubmit)
+
+    function handleSubmit(event) {
+        event.preventDefault() // self-explanatory
+        event.stopPropagation() // stop event bubbling -- other parent element events will not trigger
+        event.stopImmediatePropagation() // stop other event listeners on the same element from being triggered.
+
+        // map to send to server
+        const jsonMap = {}
+
+        // add api key to map
+        let apiKey = document.querySelector('#api-key').value
+        jsonMap["apiKey"] = apiKey
+
+        // add each input field to map
+        addRequestInputFieldsToMap(jsonMap);
+        console.log(jsonMap)
+
+        // send map to sever
+        postMessage(jsonMap)
+    }
+
+
+</script>
